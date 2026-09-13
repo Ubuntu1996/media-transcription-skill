@@ -1,0 +1,3 @@
+# Download/browser environment; inference is separate.
+gdown==5.2.2
+playwright==1.62.0

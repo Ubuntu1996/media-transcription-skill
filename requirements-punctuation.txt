@@ -1,0 +1,6 @@
+# Optional ModelScope pipeline dependencies; validate import in your environment.
+addict
+datasets
+pillow
+simplejson
+sortedcontainers

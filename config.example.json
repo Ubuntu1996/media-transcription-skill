@@ -1,0 +1,13 @@
+{
+  "asr_python": "~/venvs/funasr-cpu/bin/python",
+  "model_path": "~/models/funasr/SenseVoiceSmall",
+  "vad_path": null,
+  "punc_path": null,
+  "jobs_root": "~/transcription_jobs",
+  "threads": 2,
+  "chunk_seconds": 60,
+  "site": "auto",
+  "browser_timeout": 180,
+  "asr_timeout": 21600,
+  "max_audio_bytes": 536870912
+}

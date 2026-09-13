@@ -1,0 +1,3 @@
+# Install a compatible CPU torch/torchaudio pair first; see references/setup.md.
+funasr==1.4.14
+modelscope==1.39.1
