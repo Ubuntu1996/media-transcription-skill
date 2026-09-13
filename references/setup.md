@@ -1,8 +1,8 @@
-# 环境与模型
+# Environment and models
 
-## 轻量下载环境
+## Lightweight download environment
 
-通过 Hermes `terminal` 在项目目录执行：
+Run in the project directory through the Hermes `terminal` tool:
 
 ```text
 python3 -m venv .venv
@@ -10,24 +10,27 @@ python3 -m venv .venv
 .venv/bin/python scripts/media_transcribe.py doctor
 ```
 
-ffmpeg/ffprobe 必须在 PATH。Ubuntu 可在用户允许安装系统包后，通过
-`terminal` 执行 `sudo apt-get update` 和 `sudo apt-get install ffmpeg`。
-Python 推荐 3.11；CLI/离线测试也在 Python 3.12 上执行验证。
+`ffmpeg` and `ffprobe` must be available in `PATH`. On Ubuntu, after user approval for system
+packages, you can run `sudo apt-get update` and `sudo apt-get install ffmpeg`.
+Python 3.11 is recommended; the CLI and offline tests were also validated on Python 3.12.
 
-## 优先复用现有 ASR 环境
+## Prefer reusing an existing ASR environment
 
-通过 `terminal` 检查所选解释器：
-`<ASR_PYTHON> -c "from funasr import AutoModel; print('import OK')"`。
-标点另需验证：
-`<ASR_PYTHON> -c "from modelscope.pipelines import pipeline; print('import OK')"`。
+Verify the selected interpreter with:
+`<ASR_PYTHON> -c "from funasr import AutoModel; print('import OK')"`.
 
-下载与 ASR 可分别使用不同 Python 环境；靠同一个任务目录交接，不需要重复
-下载、复制模型或者修改 Hermes 自己的 Python 环境。
+If punctuation is needed, also verify:
+`<ASR_PYTHON> -c "from modelscope.pipelines import pipeline; print('import OK')"`.
 
-## 全新 ASR 环境（可选，需额外磁盘和网络）
+Download and ASR steps may use separate Python environments and hand off through the same job
+folder. There is no need to duplicate models or modify Hermes's own Python environment.
 
-不要因缺依赖就自动下载数 GB。先核对 RAM、空闲磁盘和用户意图。
-在用户选定的虚拟环境中，通过 `terminal` 执行：
+## Fresh ASR environment (optional, needs extra disk and network)
+
+Do not automatically download multiple gigabytes when dependencies are missing. First confirm RAM,
+free disk, and user intent.
+
+In the chosen virtual environment, run:
 
 ```text
 python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
@@ -35,27 +38,30 @@ python -m pip install -r requirements-asr.txt
 python -m pip check
 ```
 
-torch 与 torchaudio 应选择相互兼容的配对版本。不要盲目复制旧环境中不同
-版本的二者。requirements-asr.txt 的 FunASR/ModelScope 版本来自本机现有
-环境；没有承诺在任意新平台上重建成功，安装后仍要做导入和真实短音频测试。
+`torch` and `torchaudio` must be a compatible pair. Do not blindly copy mismatched versions from an
+older environment. The FunASR/ModelScope versions in `requirements-asr.txt` were taken from an
+existing local environment; they are not guaranteed to recreate successfully on every new platform,
+so you should still run imports and a real short-audio test afterward.
 
-补标点需要额外依赖：通过 `terminal` 执行
-`python -m pip install -r requirements-punctuation.txt`，随后验证 pipeline 导入。
-这些附加依赖来自旧流程的缺依赖恢复记录，并非已验证的全量锁文件。
+Punctuation needs additional dependencies:
+`python -m pip install -r requirements-punctuation.txt`, then verify the pipeline import.
+Those extra dependencies came from earlier recovery notes and are not a fully validated lock file.
 
-## 本地模型快照
+## Local model snapshots
 
-CLI 不接受远程模型别名；传包含真实 `model.pt`、配置和词表等资源的可信快照
-目录。仅存在目录或 `model.pt.incomplete` 不算准备好。模型自身的许可证独立于项目。
+The CLI does not accept remote model aliases. Pass a trusted snapshot directory containing a real
+`model.pt`, config files, token files, and other required assets. An empty directory or only
+`model.pt.incomplete` does not count as ready. Model licensing is independent from this project.
 
-原流程使用过：
-- ASR：`iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`
-- VAD：`iic/speech_fsmn_vad_zh-cn-16k-common-pytorch`
-- 中文标点：`iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch`
+Previously used model IDs:
+- ASR: `iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`
+- VAD: `iic/speech_fsmn_vad_zh-cn-16k-common-pytorch`
+- Chinese punctuation: `iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch`
 
-模型需要另行从可信发布者获取并核验；本项目不附带权重或自动下载脚本。
-不要把本机缓存路径、旧任务 ID 写入共享 skill。
+Obtain model weights from a trusted publisher and verify them separately; this project does not
+ship weights or an automatic model-download script.
 
-先识别一段真实、有说话声的短音频，检查内容，再扩大到批量任务。
-固定分段可能切断词句；CPU 分块降低音频工作内存，但不减少模型权重本身。
-如果进程因内存不足被杀，降低并发，不要不断重启同一大任务。
+Do a real short-audio transcription test before scaling to bigger jobs. Fixed-size chunking can
+split words across boundaries. CPU chunking reduces working audio memory, but not the memory needed
+for the model weights themselves. If the process is killed for low memory, reduce concurrency
+instead of repeatedly restarting the same large job.

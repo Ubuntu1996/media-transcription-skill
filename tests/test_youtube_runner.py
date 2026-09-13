@@ -32,7 +32,7 @@ class ConfigurationTests(unittest.TestCase):
                     'https://youtube.com/watch?v=%6ANQXAC9IVRw']:
             with self.subTest(url=url), self.assertRaises(ValueError):
                 w.youtube_id(url)
-        self.assertEqual(w.title_filename('中文 / 演讲: 第一课'), '中文 _ 演讲_ 第一课.mp3')
+        self.assertEqual(w.title_filename('English / Talk: Lesson 1'), 'English _ Talk_ Lesson 1.mp3')
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / 'config.json'
             config.write_text(json.dumps({'asr_python': sys.executable, 'model_path': None, 'threads': 2}))
@@ -57,13 +57,13 @@ class PipelineTests(unittest.TestCase):
             if site == 'tuberipper':
                 raise RuntimeError('fixture converter unavailable')
             self.audio(output)
-            return {'title': '测试 / 视频', 'suggested_filename': 'irrelevant provider branding.mp3',
+            return {'title': 'sample / video', 'suggested_filename': 'irrelevant provider branding.mp3',
                     'duration_seconds': 0.3, 'provider': site}
         def infer(job, settings):
             backend = Mock()
             def recognize(path):
                 recognized.append(path)
-                return '测试文字稿'
+                return 'sample transcript'
             backend.recognize.side_effect = recognize
             config = {k: settings[k] for k in ('model_path', 'vad_path', 'punc_path', 'chunk_seconds', 'threads')}
             return w.core.transcribe_job(job, config, lambda _: backend)
@@ -74,7 +74,7 @@ class PipelineTests(unittest.TestCase):
             result = w.run_pipeline(url, job, settings, downloader=downloader, infer=infer)
             self.assertTrue(result['complete'])
             self.assertEqual(calls, ['tuberipper', 'onlymp3'])
-            self.assertEqual((job / 'txt' / '测试 _ 视频.txt').read_text(), '测试文字稿\n')
+            self.assertEqual((job / 'txt' / 'sample _ video.txt').read_text(), 'sample transcript\n')
             result = w.run_pipeline(url, job, settings, downloader=downloader, infer=infer)
             self.assertTrue(result['complete'])
             self.assertEqual(len(recognized), 1)
@@ -87,7 +87,7 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(hasattr(w, 'run_pipeline'), 'Missing automatic pipeline')
         def downloader(url, output, site, settings):
             self.audio(output)
-            return {'title': '音频验证', 'suggested_filename': 'audio.mp3', 'provider': site}
+            return {'title': 'audio-check', 'suggested_filename': 'audio.mp3', 'provider': site}
         infer = Mock(side_effect=AssertionError('Must not transcribe'))
         with tempfile.TemporaryDirectory() as tmp:
             settings = w.load_settings(Path(tmp) / 'absent')

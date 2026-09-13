@@ -1,76 +1,116 @@
-# 本地验证记录
+# Local validation record
 
-## v0.2 YouTube：真实网页下载验证
+## v0.2 YouTube: real browser download validation
 
-- 已安装 Playwright 1.62.0 及配套 Chromium；使用真实无头浏览器。
-- 实际运行 `scripts/youtube_transcribe.py`，输入公开视频 `jNQXAC9IVRw`，使用
-  `--download-only --site tuberipper`，成功返回退出码 0。
-- 实际 MP3：`Me at the zoo.mp3`，304556 字节，ffprobe 时长 19.032 秒。
-- 清单记录 `verified_media=1`、`verified_transcripts=0`、`complete=false`；
-  没有把成功下载宣称为已完成转录。
-- 重复执行相同 URL/任务，复用已校验音频，浏览器转换尝试仍只有一次。
-- OnlyMP3 的真实入口返回 HTTP 403 / Cloudflare security verification，
-  因此真实成功转换流程仍未验证，不能承诺它一定可作备用。
-- 无模型配置时，完整入口在提交视频前明确报 `Missing model_path`，未假装识别。
-- 除旧缓存路径外，也检查了用户目录、挂载位置、系统缓存和临时目录，
-  未找到可用 FunASR 权重；没有收到下载模型的确认，所以没有下载大模型。
+- Installed Playwright 1.62.0 with its Chromium bundle and used a real headless browser.
+- Ran `scripts/youtube_transcribe.py` against the public video `jNQXAC9IVRw` with
+  `--download-only --site tuberipper`; it exited with code 0.
+- Produced a real MP3: `Me at the zoo.mp3`, 304556 bytes, with ffprobe duration 19.032 seconds.
+- The manifest recorded `verified_media=1`, `verified_transcripts=0`, and `complete=false`;
+  a successful download was not misreported as a finished transcription.
+- Re-running the same URL and job reused the verified audio, and the browser conversion attempt
+  count still remained one.
+- The real OnlyMP3 entrypoint returned HTTP 403 / Cloudflare security verification, so a real
+  successful fallback flow is still unverified and cannot be promised.
+- Without model configuration, the full entrypoint clearly reported `Missing model_path` before
+  submitting the video URL for transcription.
+- In addition to old cache paths, user directories, mounted locations, system caches, and temp
+  directories were checked for usable FunASR weights. None were found, and no large model was
+  downloaded without approval.
 
-## v0.2 自动化测试
+## v0.2 automated tests
 
-主执行者重新运行 `.venv/bin/python -m unittest discover -s tests -v`：30 项测试通过。
-另有真实子进程回归测试，确认主进程退出后仍会清理忽略 SIGTERM 的同组后代进程。
-`compileall` 通过。新增覆盖真实 Playwright 路由测试、站点挑战、广告导航拦截、
-危险下载链接、视频 ID/时长校验、结构化网络错误、单链接协调、备用站切换、
-音频复用、ASR 子进程调用和超时终止。浏览器路由与 ASR 测试数据均明确标注为测试替身。
+- Re-ran `.venv/bin/python -m unittest discover -s tests -v`: 30 tests passed.
+- Real subprocess regression coverage confirms that after the parent exits, the process group is
+  still cleaned up even when descendants ignore SIGTERM.
+- `compileall` passed.
+- Coverage includes real Playwright routing tests, provider challenges, ad-navigation blocking,
+  unsafe download links, video ID / duration validation, structured network errors, single-link
+  orchestration, fallback switching, audio reuse, ASR subprocess invocation, and timeout cleanup.
+- Browser routing and ASR fixtures are explicit test doubles, not live provider evidence.
 
-## v0.2 独立复审
+## v0.2 independent review
 
-规格审查通过；质量审查发现的日志模式子进程清理问题已修复并通过独立复审。
-复审者运行协调层 7 项测试全部通过，主执行者运行全套 30 项测试通过。
-目前没有已知的未解决代码审查阻碍。模型权重缺失和 OnlyMP3 验证墙仍是实际部署限制。
+- Specification review passed.
+- The logging-mode subprocess cleanup issue found during quality review was fixed and independently
+  re-reviewed.
+- The reviewer ran all 7 orchestration-layer tests successfully, and the primary runner passed the
+  full 30-test suite.
+- There are currently no known unresolved code-review blockers.
+- Missing model weights and the OnlyMP3 verification wall remain deployment constraints.
 
-以下为 v0.1 的基线记录。
+The remaining sections below preserve the v0.1 baseline record.
 
-## v0.1 已实际执行
+## v0.1 completed locally
 
-- Python 3.12.3：`python -m unittest discover -s tests -v`，12 项测试通过。
-- `python -m compileall -q scripts tests`：通过。
-- SKILL.md YAML/frontmatter：名称格式、描述长度/句号、Linux 平台和脚本路径检查通过。
-- CLI `--help`、`doctor`、`status` 已运行。
-- 真实 FFmpeg/ffprobe：用于测试中的临时 WAV、分段转换和假 HTML 媒体拒绝。
-- 原有 Python 3.11.15 ASR 环境：FunASR AutoModel、ModelScope pipeline 均实际导入成功。
-- 项目轻量 `.venv`：gdown 5.2.2 已安装；未复制或安装大型 ASR 依赖。
-- 脚本静态搜索：未发现 shell=True、os.system、eval/exec、pickle.load、GitHub token 模式或硬编码本机用户路径。
+- Python 3.12.3: `python -m unittest discover -s tests -v`, 12 tests passed.
+- `python -m compileall -q scripts tests`: passed.
+- SKILL.md YAML/frontmatter checks passed for name format, description length/punctuation, Linux
+  platform declaration, and script paths.
+- CLI `--help`, `doctor`, and `status` were run.
+- Real FFmpeg/ffprobe were used for temporary WAV files, chunk conversion, and HTML-media rejection
+  inside tests.
+- An existing Python 3.11.15 ASR environment successfully imported FunASR AutoModel and the
+  ModelScope pipeline.
+- The lightweight project `.venv` had gdown 5.2.2 installed and did not duplicate large ASR
+  dependencies.
+- Static script searches found no `shell=True`, `os.system`, `eval`/`exec`, `pickle.load`, GitHub
+  token patterns, or hardcoded local user paths.
 
-## 测试覆盖
+## Test coverage
 
-清单和原文件名、相对子目录、重名冲突、危险路径、Drive URL 校验、数量不匹配、
-下载内容验证、下载跳过/改动保护、任务锁、真实音频分段、TXT/原始文本分离、
-标点失败保留 raw、识别全空失败、成稿修改保护、缺失权重失败、CLI 完成状态检查、
-重新下载不同媒体后不得复用旧文字稿。
+Covered behaviors include:
 
-## 独立代码审查
+- inventory and original filenames
+- relative subfolders
+- duplicate-output collisions
+- dangerous paths
+- Drive URL validation
+- count mismatch failures
+- download-content validation
+- download skipping and tamper protection
+- job locking
+- real audio chunking
+- raw vs final TXT separation
+- raw preservation on punctuation failure
+- all-empty recognition failure
+- edited-final protection
+- missing-weight failure
+- CLI completion/status verification
+- prevention of transcript reuse after changed media
 
-独立审查发现的两项问题均已修复，并通过复审：
+## Independent code review
 
-- 重新下载的媒体发生变化时，不得复用旧 raw/TXT；现将文字稿绑定源媒体哈希。
-- 输出和源路径的文件／目录祖先冲突必须提前拒绝，覆盖顺序反转和大小写变体。
+Two issues found during independent review were fixed and passed re-review:
 
-主执行者与复审者均重新运行测试：12 项通过，未发现剩余逻辑或安全问题。
-公开文件夹测试还明确断言仅枚举、不读取 Cookie、不忽略列表上限。
-这不替代真实 Drive 和模型推理集成测试。
+- When redownloaded media changes, stale raw/TXT must not be reused; transcripts are now bound to
+  source-media hashes.
+- File/directory ancestor conflicts between source and output paths are rejected early, including
+  reverse-overwrite order and case-variant conflicts.
 
-## 未完成的外部集成验证
+The primary runner and reviewer both re-ran tests: 12 passed, with no remaining logic or security
+issues found. Public-folder tests also explicitly assert inventory-only behavior, no cookie usage,
+and no waiver of listing limits.
 
-- 本次未使用真实 Drive URL 下载用户媒体；Drive 调用通过明确的测试替身测试。
-- 本次未运行真实模型推理或评估识别准确率；测试返回文本是明确的固定测试数据。
-- 旧流程记录的 ModelScope 缓存路径当前不存在；实际权重需重新定位或按用户授权获取。
-- 没有声称全新 ASR/标点环境可由依赖文件完全复现；尚未做干净环境重装验证。
+That does not replace real Drive and real model-inference integration testing.
 
-因此：本地 CLI、文件流程、skill 文档已构建并测试；真实 Drive → 真实语音识别的
-端到端验收仍需一个获准使用的来源和完整可信模型快照。
+## Incomplete external integration validation
 
-## 修改范围
+- No real user media was downloaded from a live Drive URL during this validation pass; Drive calls
+  were tested with explicit doubles.
+- No real model inference or accuracy evaluation was performed during test runs; returned text was
+  fixed test data.
+- The old workflow's ModelScope cache paths no longer exist; real weights must be relocated or
+  obtained with authorization.
+- The dependency files have not been claimed to fully recreate a brand-new ASR/punctuation
+  environment; a clean reinstall has not yet been validated.
 
-只构建本地项目；未创建 GitHub 仓库、推送、上传素材，未修改 Hermes 配置或
-安装/替换已有 skill。既有媒体、文字稿、ASR 环境没有被修改。
+Therefore: the local CLI, file workflow, and skill documentation are built and tested, but a real
+Drive -> real speech-recognition end-to-end acceptance run still requires an authorized source and
+complete trusted model snapshots.
+
+## Modification scope
+
+This work only built the local project. It did not create a GitHub repository, push code, upload
+media, modify Hermes configuration, or install/replace an existing skill. Existing media,
+transcripts, and ASR environments were not modified.

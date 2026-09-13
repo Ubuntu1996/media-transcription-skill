@@ -1,40 +1,44 @@
-# YouTube / Google Drive / 本地媒体 → TXT 转录 Skill
+# YouTube / Google Drive / Local Media -> TXT Transcription Skill
 
-本地项目，尚未发布 GitHub。包含 Hermes skill 文档和可独立运行的 Python CLI。
-主流程：YouTube 链接 → Playwright 网页转 MP3 → 本地 FunASR → TXT。
-原来的公开 Drive 和本地媒体批处理流程保留。
+Local project with a Hermes skill document and a standalone Python CLI.
+Main flow: YouTube URL -> Playwright web MP3 download -> local FunASR -> TXT.
+The existing public Drive and local media batch workflows are also preserved.
 
-## 当前范围
+## Current scope
 
-- YouTube 单链接自动流程：TubeRipper 优先，失败后尝试 OnlyMP3（目前受验证墙阻挡）。
-- 公开 Drive 单文件、文件夹（含相对子目录）；也可导入本地媒体。
-- 保留中文、空格和常规原始文件名；扩展名换成 `.txt`。
-- 文件级恢复、SHA-256 校验、原子进度文件、单任务锁。
-- 不覆盖人工修改的成稿；补标点失败保留原始文字。
-- 一次只解码一段 16 kHz 单声道音频，默认 60 秒、2 个 CPU 线程。
-- 不自动上传、不自动清理、不创建定时任务、不读取浏览器 Cookie。
-- 当前支持 Linux、Python 3.11+；不是 SRT/时间轴字幕工具。
+- Automatic single-URL YouTube workflow: TubeRipper first, then OnlyMP3 as fallback
+  (currently blocked by a verification wall).
+- Public Drive single files and folders, including relative subfolders; local media import
+  is also supported.
+- Preserve ordinary original filenames, spaces, and Unicode where the filesystem allows;
+  replace only the extension with `.txt`.
+- Per-file resume, SHA-256 verification, atomic progress files, and a single-job lock.
+- Do not overwrite manually edited final transcripts; if punctuation fails, keep the raw text.
+- Decode one 16 kHz mono chunk at a time; defaults are 60 seconds and 2 CPU threads.
+- No automatic upload, cleanup, scheduling, or browser cookie usage.
+- Currently supports Linux and Python 3.11+; not an SRT or timestamp-subtitle tool.
 
-## 项目结构
+## Project layout
 
 ```text
-SKILL.md                         Hermes 的 skill 入口
-scripts/youtube_transcribe.py    一条 YouTube 链接到本地 TXT 的自动入口
-scripts/youtube_browser.py       Playwright 网页下载子进程
-scripts/media_transcribe.py      Drive / 本地媒体 / 转录核心
-references/setup.md             环境、模型与迁移说明
-references/design.md            数据布局、恢复及限制
-requirements.txt                gdown + Playwright（不含大型 ASR 包）
-config.example.json             一次性配置示例；本机配置不要上传
-requirements-asr.txt            可选 ASR 依赖
-requirements-punctuation.txt    可选标点依赖
-tests/test_workflow.py           离线回归测试
-VALIDATION.md                    本次实际验证记录
+SKILL.md                         Hermes skill entrypoint
+scripts/youtube_transcribe.py    Automatic entrypoint from one YouTube URL to local TXT
+scripts/youtube_browser.py       Playwright browser download worker subprocess
+scripts/media_transcribe.py      Drive / local media / transcription core
+references/setup.md              Environment, model, and migration notes
+references/design.md             Data layout, recovery, and limitations
+requirements.txt                 gdown + Playwright (no large ASR packages)
+config.example.json              One-time configuration example; do not commit local config
+requirements-asr.txt             Optional ASR dependencies
+requirements-punctuation.txt     Optional punctuation dependencies
+tests/test_workflow.py           Offline regression tests
+VALIDATION.md                    Real validation record for this revision
 ```
 
-## 快速开始
+## Quick start
 
-在项目目录运行。下面的 URL、文件名和模型路径是占位示例，须自行替换。
+Run inside the project directory. The URLs, filenames, and model paths below are placeholders
+and must be replaced with your own verified values.
 
 ```bash
 python3 -m venv .venv
@@ -43,11 +47,12 @@ python3 -m venv .venv
 .venv/bin/python scripts/media_transcribe.py --help
 ```
 
-确保系统有 `ffmpeg` 和 `ffprobe`。ASR 是可选重依赖，安装前先看
-[环境与模型说明](references/setup.md)，可直接使用已有 ASR Python 环境，
-不必在项目 `.venv` 再安装一套 PyTorch。
+Make sure `ffmpeg` and `ffprobe` are available in `PATH`. ASR is an optional heavy dependency;
+read [Environment and models](references/setup.md) before installing it. You can reuse an
+existing ASR Python environment instead of installing another copy of PyTorch inside the
+project `.venv`.
 
-### YouTube：配置一次，以后只传链接
+### YouTube: configure once, then pass only the URL
 
 ```bash
 .venv/bin/python -m playwright install chromium
@@ -57,31 +62,37 @@ python3 -m venv .venv
 .venv/bin/python scripts/youtube_transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID'
 ```
 
-`--configure` 检查模型文件和 Python 导入后，把本机设置写入 `config.local.json`。
-此文件已经加入忽略规则。若模型尚未准备好，不会擅自下载大文件，也不会先
-把视频 URL 交给转换站；可以显式用 `--download-only` 先保存音频。
+`--configure` checks model files and Python imports, then writes local machine settings to
+`config.local.json`. That file is already ignored. If models are not ready yet, the script will
+not silently download large files and will not send the video URL to a converter site first; you
+can explicitly use `--download-only` to save audio first.
 
-程序自动执行：
+The program automatically:
 
-1. 解析 YouTube URL、定位任务目录，检查已有音频/成稿是否可复用。
-2. 用独立 Playwright Chromium 打开转换网站、填写链接、等待转换结果。
-3. TubeRipper 优先；失败后尝试 OnlyMP3，验证码/权限限制不会自动绕过。
-4. 读取实际页面生成的音频链接，用浏览器下载事件保存 MP3；不是调用猜测的私有 API。
-5. 校验真实音轨/格式，按视频标题命名，自动调用已配置的 FunASR Python。
-6. 输出 `~/transcription_jobs/youtube-VIDEO_ID/txt/视频标题.txt`。
+1. Parses the YouTube URL, locates the job directory, and checks whether existing audio or TXT
+   can be reused.
+2. Opens a dedicated Playwright Chromium browser, fills the URL on the converter site, and waits
+   for a conversion result.
+3. Tries TubeRipper first, then OnlyMP3; challenges and permission gates are not bypassed.
+4. Reads the actual audio link generated by the page and saves the MP3 via a browser download
+   event; it does not call a guessed private API.
+5. Verifies the real audio track and format, names the file after the video title, and invokes the
+   configured FunASR Python.
+6. Writes `~/transcription_jobs/youtube-VIDEO_ID/txt/video-title.txt`.
 
 ```bash
-# 显式只下载，不做 ASR；不需要已有模型
+# Explicitly download only; no ASR, and no model required
 .venv/bin/python scripts/youtube_transcribe.py 'YOUTUBE_URL' --download-only
-# 固定站点或任务目录（通常不需要）
+# Pin a site or job directory if needed (usually not needed)
 .venv/bin/python scripts/youtube_transcribe.py 'YOUTUBE_URL' --site tuberipper --job '/path/to/job'
 ```
 
-网站会收到视频 URL；不要将保密的非公开视频链接交给第三方转换站。
-网页广告不会被当作有效下载，不安装扩展、不接受通知、不付费、不解验证码。
-详见 [YouTube 网页自动化](references/youtube-browser.md)。
+The converter site receives the video URL. Do not send confidential private or unlisted video URLs
+to a third-party conversion site without approval. Page advertising is not treated as a valid
+instruction: no extension installs, notifications, payments, or CAPTCHA solving. See
+[YouTube browser automation](references/youtube-browser.md).
 
-### 公开文件夹
+### Public folders
 
 ```bash
 .venv/bin/python scripts/media_transcribe.py inventory \
@@ -91,32 +102,35 @@ python3 -m venv .venv
   --job "$HOME/transcription_jobs/new-batch"
 ```
 
-`--expected-count` 指支持的音视频数量，不包括其他文档。不知道数量时可省略，
-但必须人工核对清单，不能把 gdown 未报错当作“肯定没有遗漏”。
+`--expected-count` means the number of supported audio/video files, not other document types. If
+no authoritative count is available you may omit it, but you must manually inspect the inventory;
+never assume gdown silence means nothing is missing.
 
-### 公开单文件
+### Public single files
 
 ```bash
 .venv/bin/python scripts/media_transcribe.py inventory \
   --url 'https://drive.google.com/file/d/FILE_ID/view' \
-  --name '原始视频名称.mp4' --expected-count 1 \
+  --name 'original-video-name.mp4' --expected-count 1 \
   --job "$HOME/transcription_jobs/single-video"
 .venv/bin/python scripts/media_transcribe.py download \
   --job "$HOME/transcription_jobs/single-video"
 ```
 
-单文件必须提供核实过的原文件名；不会自动改成 source.mp4。
+Single-file links require the verified original filename; the script will not rename them to a
+placeholder such as `source.mp4`.
 
-### 已下载的本地文件
+### Already-downloaded local files
 
 ```bash
 .venv/bin/python scripts/media_transcribe.py local \
   --input '/path/to/media' --job "$HOME/transcription_jobs/local-batch"
 ```
 
-该命令会复制媒体，不会移动或删除原文件。任务目录必须不存在。
+This command copies media; it does not move or delete the originals. The job directory must not
+already exist.
 
-### 转录与补标点
+### Transcription and punctuation
 
 ```bash
 /path/to/asr-env/bin/python scripts/media_transcribe.py transcribe \
@@ -129,42 +143,49 @@ python3 -m venv .venv
   --job "$HOME/transcription_jobs/new-batch"
 ```
 
-没有 VAD 或标点模型时，删除对应选项。选择不加标点属于有效运行；明确要求
-补标点但失败时，返回错误并保留 `raw/`，不会冒充完整成功。
+If VAD or punctuation models are unavailable, remove those options. Running without punctuation is
+still a valid run; if punctuation was explicitly requested and fails, the command returns an error
+and keeps `raw/` instead of pretending the full job succeeded.
 
-最终成稿：`<JOB>/txt/原始视频名称.txt`。
-原始识别：`<JOB>/raw/原始视频名称.txt`。
-进度和错误：`<JOB>/manifest.json`。
+Final transcript: `<JOB>/txt/original-video-name.txt`.
+Raw recognition: `<JOB>/raw/original-video-name.txt`.
+Progress and errors: `<JOB>/manifest.json`.
 
-重复 `download` 或 `transcribe` 会检查已完成文件并重试失败项。
-恢复单位是整文件，不是字节级下载或 ASR 分块。更换模型、设置或成稿被修改时，
-请建新任务，避免误覆盖。`status` 只有全部源媒体和成稿校验通过才返回 0；
-下载成功但尚未转录时，`download` 返回 0，而 `status` 返回 1，这是预期行为。
+Repeating `download` or `transcribe` checks completed files and retries failed items. Recovery is
+per file, not byte-level download resume or ASR chunk resume. If model settings change or the
+final transcript was edited, create a new job to avoid unintended overwrite. `status` returns 0
+only when all source media and final transcripts pass verification; `download` may return 0 even
+when transcription is still pending, while `status` returns 1. That is expected.
 
-## 作为 Hermes Skill 使用
+## Using as a Hermes skill
 
-当前只构建本地项目，不改 Hermes 配置、不覆盖原有 `media-transcription`。
-现在可让 Hermes 读取本项目的 `SKILL.md` 后执行流程。
-需要正式安装时，将 `SKILL.md`、`scripts/`、`references/`、`requirements*.txt` 和
-`config.example.json` 一起放入当前 profile 的
-`skills/media-transcription/`，并在新会话加载。不要只复制 SKILL.md 而漏掉脚本。
-多 profile 环境使用实际 `HERMES_HOME`，不要误装到其他 profile。
+This project is currently built locally only. It does not modify Hermes configuration or replace an
+existing `media-transcription` skill automatically. Hermes can load this project's `SKILL.md` and
+then run the workflow.
 
-官方说明：https://hermes-agent.nousresearch.com/docs/user-guide/features/skills/
+For a formal install, place `SKILL.md`, `scripts/`, `references/`, `requirements*.txt`, and
+`config.example.json` together under the current profile at `skills/media-transcription/`, then
+load a new session. Do not copy only `SKILL.md` and forget the scripts. In multi-profile setups,
+use the actual `HERMES_HOME` and do not install into the wrong profile.
 
-## 测试
+Official docs:
+https://hermes-agent.nousresearch.com/docs/user-guide/features/skills/
+
+## Tests
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-测试真实调用 FFmpeg/ffprobe；Drive 和 ASR/标点返回值是明确标注的测试替身，
-不代表真实下载或真实语音识别效果。实际覆盖与未验证项见 `VALIDATION.md`。
+Tests use real FFmpeg/ffprobe calls. Drive and ASR/punctuation results are explicit test doubles;
+they do not prove live downloads or real speech-recognition quality. See `VALIDATION.md` for the
+actual tested scope and remaining gaps.
 
-## 安全和发布
+## Security and publishing
 
-- 只处理自己拥有或获准处理的文件；访问受限时停下，不绕过权限。
-- 项目不保存真实 Drive 链接、用户成稿或凭据。
-- 默认 `.gitignore` 排除任务、媒体、模型、虚拟环境、Cookie 和密钥文件。
-  上传前仍应人工检查文件清单，不能只依赖忽略规则。
-- 目前未选定开源许可证，按私有项目保留权利；以后公开前确认作者及许可证。
+- Process only files you own or are authorized to process; stop on access restrictions.
+- The project does not store real Drive links, user transcripts, or credentials by default.
+- `.gitignore` excludes jobs, media, models, virtual environments, cookies, and key files by
+  default. Still inspect the file list manually before publishing.
+- No open-source license has been chosen yet; treat the project as private until licensing is
+  decided.

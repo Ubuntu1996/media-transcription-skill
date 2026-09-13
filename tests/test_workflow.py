@@ -19,9 +19,9 @@ class InventoryTests(unittest.TestCase):
     def test_inventory_preserves_names_and_rejects_collisions(self):
         self.assertTrue(SCRIPT.exists(), 'Missing workflow implementation')
         w = load()
-        entries = w.make_entries([('abc_123', '课程一.mp4'), ('def_456', '子目录/课程二.mp3')])
-        self.assertEqual(entries[0]['name'], '课程一.mp4')
-        self.assertEqual(entries[1]['name'], '子目录/课程二.mp3')
+        entries = w.make_entries([('abc_123', 'lesson-one.mp4'), ('def_456', 'subdir/lesson-two.mp3')])
+        self.assertEqual(entries[0]['name'], 'lesson-one.mp4')
+        self.assertEqual(entries[1]['name'], 'subdir/lesson-two.mp3')
         for names in [[('a', '../escape.mp4')], [('a', '/tmp/a.mp4')],
                       [('a', 'a\\b.mp4')], [('a', 'x.mp4'), ('b', 'x.mp3')],
                       [('a', 'X.mp4'), ('b', 'x.mp4')],
@@ -49,7 +49,7 @@ class DownloadTests(unittest.TestCase):
         import wave
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp) / 'job'
-            w.create_job(job, w.make_entries([('id_1', '课程.wav')]), 'fixture')
+            w.create_job(job, w.make_entries([('id_1', 'lesson.wav')]), 'fixture')
             calls = []
             def downloader(file_id, output):
                 calls.append(file_id)
@@ -63,7 +63,7 @@ class DownloadTests(unittest.TestCase):
             self.assertEqual(w.download_job(job, downloader), 0)
             self.assertEqual(calls, ['id_1'])
             self.assertEqual(w.read_job(job)['entries'][0]['download'], 'done')
-            (job / 'media' / '课程.wav').write_bytes(b'<html>login</html>')
+            (job / 'media' / 'lesson.wav').write_bytes(b'<html>login</html>')
             self.assertEqual(w.download_job(job, downloader), 1)
             self.assertEqual(calls, ['id_1'], 'Do not overwrite changed local media')
 
@@ -90,13 +90,13 @@ class DownloadTests(unittest.TestCase):
                 w.parse_drive_url(url)
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
-                w.inventory('https://drive.google.com/file/d/abc/view', Path(tmp) / 'job', '测试.mp4', 2)
+                w.inventory('https://drive.google.com/file/d/abc/view', Path(tmp) / 'job', 'sample.mp4', 2)
 
 
 class TranscriptionTests(unittest.TestCase):
     def make_job(self, w, root):
         import wave
-        source = root / 'input' / '中文课程.wav'
+        source = root / 'input' / 'lesson-audio.wav'
         source.parent.mkdir()
         with wave.open(str(source), 'wb') as f:
             f.setnchannels(1)
@@ -114,9 +114,9 @@ class TranscriptionTests(unittest.TestCase):
             def recognize(self, path):
                 self.calls += 1
                 self.durations.append(w.probe(path))
-                return '这是测试'
+                return 'this is a test'
             def punctuate(self, text):
-                return text + '。'
+                return text + '.'
             calls = 0
             durations = []
         backend = FixtureBackend()
@@ -124,27 +124,27 @@ class TranscriptionTests(unittest.TestCase):
             job = self.make_job(w, Path(tmp))
             config = {'model_path': 'fixture', 'vad_path': None, 'punc_path': 'fixture', 'chunk_seconds': 1, 'threads': 1}
             self.assertEqual(w.transcribe_job(job, config, lambda c: backend), 0)
-            output = job / 'txt' / '中文课程.txt'
-            self.assertEqual(output.read_text(), '这是测试\n这是测试。\n')
-            self.assertEqual((job / 'raw' / '中文课程.txt').read_text(), '这是测试\n这是测试\n')
+            output = job / 'txt' / 'lesson-audio.txt'
+            self.assertEqual(output.read_text(), 'this is a test\nthis is a test.\n')
+            self.assertEqual((job / 'raw' / 'lesson-audio.txt').read_text(), 'this is a test\nthis is a test\n')
             self.assertEqual(backend.calls, 2)
             self.assertTrue(all(d <= 1.01 for d in backend.durations))
             self.assertEqual(w.transcribe_job(job, config, lambda c: backend), 0)
             self.assertEqual(backend.calls, 2)
-            output.write_text('用户修改')
+            output.write_text('user edit')
             self.assertEqual(w.transcribe_job(job, config, lambda c: backend), 1)
-            self.assertEqual(output.read_text(), '用户修改')
+            self.assertEqual(output.read_text(), 'user edit')
 
     def test_redownloaded_media_cannot_reuse_stale_transcript(self):
         w = load()
         from unittest.mock import Mock
         backend = Mock()
-        backend.recognize.return_value = '第一次识别'
+        backend.recognize.return_value = 'first recognition'
         config = {'model_path': 'fixture', 'vad_path': None, 'punc_path': None, 'chunk_seconds': 60, 'threads': 1}
         with tempfile.TemporaryDirectory() as tmp:
             job = self.make_job(w, Path(tmp))
             self.assertEqual(w.transcribe_job(job, config, lambda c: backend), 0)
-            media = job / 'media' / '中文课程.wav'
+            media = job / 'media' / 'lesson-audio.wav'
             media.unlink()
             import wave
             def different_media(file_id, output):
@@ -168,7 +168,7 @@ class TranscriptionTests(unittest.TestCase):
             job = self.make_job(w, Path(tmp))
             config = {'model_path': 'fixture', 'vad_path': None, 'punc_path': None, 'chunk_seconds': 60, 'threads': 1}
             self.assertEqual(w.transcribe_job(job, config, lambda c: backend), 1)
-            self.assertFalse((job / 'txt' / '中文课程.txt').exists())
+            self.assertFalse((job / 'txt' / 'lesson-audio.txt').exists())
             self.assertEqual(w.read_job(job)['entries'][0]['transcription'], 'error')
 
     def test_punctuation_failure_preserves_raw(self):
@@ -176,14 +176,14 @@ class TranscriptionTests(unittest.TestCase):
         self.assertTrue(hasattr(w, 'transcribe_job'), 'Missing transcription behavior')
         from unittest.mock import Mock
         backend = Mock()
-        backend.recognize.return_value = '原始文本'
+        backend.recognize.return_value = 'raw text'
         backend.punctuate.side_effect = RuntimeError('fixture model failure')
         with tempfile.TemporaryDirectory() as tmp:
             job = self.make_job(w, Path(tmp))
             config = {'model_path': 'fixture', 'vad_path': None, 'punc_path': 'fixture', 'chunk_seconds': 60, 'threads': 1}
             self.assertEqual(w.transcribe_job(job, config, lambda c: backend), 1)
-            self.assertEqual((job / 'raw' / '中文课程.txt').read_text(), '原始文本\n')
-            self.assertFalse((job / 'txt' / '中文课程.txt').exists())
+            self.assertEqual((job / 'raw' / 'lesson-audio.txt').read_text(), 'raw text\n')
+            self.assertFalse((job / 'txt' / 'lesson-audio.txt').exists())
 
     def test_backend_requires_local_weights_and_valid_result_text(self):
         w = load()
@@ -191,7 +191,7 @@ class TranscriptionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
                 w.FunASRBackend({'model_path': tmp, 'vad_path': None, 'punc_path': None, 'threads': 1})
-        self.assertEqual(w.result_text([{'text': '你好'}]), '你好')
+        self.assertEqual(w.result_text([{'text': 'hello'}]), 'hello')
         for value in [{'error': 'bad'}, None, [{'text': 5}]]:
             with self.assertRaises(ValueError):
                 w.result_text(value)
@@ -206,7 +206,7 @@ class CLITests(unittest.TestCase):
         w = load()
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp) / 'job'
-            w.create_job(job, w.make_entries([('abc', '未下载.mp4')]), 'fixture')
+            w.create_job(job, w.make_entries([('abc', 'not-downloaded.mp4')]), 'fixture')
             result = subprocess.run([sys.executable, str(SCRIPT), 'status', '--job', str(job)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 1)
             report = json.loads(result.stdout)
@@ -232,11 +232,11 @@ class CLITests(unittest.TestCase):
         w = load()
         from unittest.mock import Mock, patch
         from types import SimpleNamespace
-        listing = Mock(return_value=[SimpleNamespace(id='abc', path='目录/a.mp4')])
+        listing = Mock(return_value=[SimpleNamespace(id='abc', path='folder/a.mp4')])
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict('sys.modules', {'gdown': SimpleNamespace(download_folder=listing)}):
                 result = w.inventory('https://drive.google.com/drive/folders/abc', Path(tmp) / 'job', expected_count=1)
-                self.assertEqual(result['names'], ['目录/a.mp4'])
+                self.assertEqual(result['names'], ['folder/a.mp4'])
                 self.assertFalse((Path(tmp) / 'job' / 'media').exists())
                 listing.assert_called_once_with(id='abc', output='inventory', skip_download=True,
                                                 use_cookies=False, remaining_ok=False, quiet=True)

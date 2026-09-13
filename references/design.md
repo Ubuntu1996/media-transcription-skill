@@ -1,41 +1,58 @@
-# 数据布局与恢复约定
+# Data layout and recovery rules
 
-任务目录与代码分离：
+Keep job directories separate from the code:
 
 ```text
 job/
-  manifest.json        URL/文件 ID、每项状态、路径配置、哈希和错误（私有数据）
+  manifest.json        URL/file ID, per-item state, path config, hashes, and errors (private data)
   .lock                Linux advisory lock
-  media/<原名>         下载或本地复制的源文件
-  raw/<原名>.txt       补标点前文本
-  txt/<原名>.txt       最终成稿
+  media/<source-name>  Downloaded or locally copied source file
+  raw/<name>.txt       Text before punctuation
+  txt/<name>.txt       Final transcript
 ```
 
-## 不变量
+## Invariants
 
-1. inventory 必须创建新目录，不覆盖既有清单。
-2. 路径穿越、绝对媒体路径、反斜杠、控制字符、TXT 名称冲突会被拒绝。
-3. 下载先进入临时目录；ffprobe 确认音轨和有效时长后才移动为正式媒体。
-4. SHA-256 验证现有媒体/成稿，避免把损坏文件或手工编辑当作可覆盖缓存。
-5. 整批不因单项失败停止；任何失败都返回非零，错误写入清单。
-6. 成稿只在完整转录和所要求的标点步骤成功后写出；原始文本单独保留。
-7. status 重读每个文件验证哈希，不只相信历史 done 状态。
-8. JSON 和 TXT 原子替换；在两个写入之间崩溃会留下 untracked 文件并拒绝覆盖。
-   这是有意的安全失败，需要人工核对或创建新任务，不自动删除。
+1. `inventory` must create a new directory and never overwrite an existing manifest.
+2. Path traversal, absolute media paths, backslashes, control characters, and TXT-name collisions
+   are rejected.
+3. Downloads first land in a temporary directory; only after ffprobe confirms audio and a valid
+   positive duration does the file move into `media/`.
+4. SHA-256 verification protects existing media and transcripts from being mistaken for safe cache.
+5. A batch keeps going after single-item failures, but any failure still makes the command exit
+   nonzero and records the error in the manifest.
+6. Final TXT is written only after full transcription and any requested punctuation step succeed;
+   raw text is kept separately.
+7. `status` re-reads and re-verifies hashes instead of trusting historical `done` flags.
+8. JSON and TXT are replaced atomically. A crash between artifact and manifest writes can leave an
+   untracked file; this is an intentional fail-closed behavior requiring manual inspection or a new
+   job rather than automatic deletion.
 
-## 范围和已知限制
+## Scope and known limitations
 
-- 无授权登录、媒体上传、调度器、字幕轨提取、SRT、说话人分离或翻译。
-- YouTube 由独立 Playwright worker 下载并交给同一个转录核心；浏览器与 ASR 顺序运行。
-- gdown 公开文件夹枚举受到 Drive 页面/配额和工具自身列表限制影响。
-  `remaining_ok=False` 保留硬错误；不声称支持任意规模文件夹。
-- gdown 可能规范化文件名中不适合文件系统的字符；核对清单，不能承诺异常名称逐字不变。
-- 文件夹内容变化时新建 inventory；旧清单不会自动发现新增或远端修改。
-- 已完成文件可跳过；正在处理文件的分段只存计数，不存每段文本。
-  无完整 raw TXT 时重跑整文件。下载失败也会从文件开头重试。
-- 本地 import 失败的批次可以保留用于检查；修复输入后建新 job 重导入。
-- 原始/最终 TXT 保留模型输出；不自动删除汉字间空格，避免破坏混合语言内容。
-- 模型配置只记录快照路径，不哈希模型权重；不得在同路径就地换模型再恢复旧任务。
-- CLI 内不会上传音频；依赖或模型配置可能尝试下载辅助资源，不承诺网络隔离。
-- 作业目录应是用户独占可信目录；不是防御恶意本机用户的多租户沙箱。
-- 没有自动清理入口。需要节省空间时先核验成稿，再单独请求删除媒体的授权。
+- No authenticated login, media upload, scheduler, subtitle-track extraction, SRT, diarization, or
+  translation.
+- YouTube uses a separate Playwright worker for download, then the same transcription core;
+  browser and ASR run sequentially.
+- Public Drive folder enumeration is limited by Drive page behavior, quotas, and gdown listing
+  limits. `remaining_ok=False` keeps hard failures visible; this does not claim support for
+  arbitrarily large folders.
+- gdown may normalize filesystem-hostile characters in filenames; inspect the inventory before
+  claiming exact preservation of unusual names.
+- If a folder changes remotely, create a new inventory; an old manifest does not discover new or
+  changed remote files automatically.
+- Completed files can be skipped; in-progress chunk state stores counters, not chunk text. Without
+  a complete raw TXT, a file restarts from the beginning. Failed downloads also restart from the
+  beginning of the file.
+- A failed local import batch may be kept for inspection; after fixing input issues, create a new
+  job and re-import.
+- Raw/final TXT preserve model output exactly; the tool does not automatically remove spaces between
+  CJK characters, to avoid corrupting mixed-language content.
+- Model config stores snapshot paths only, not hashes of model weights; do not swap models in place
+  at the same path and then resume an old job.
+- The CLI does not upload audio itself; dependencies or model configuration may still fetch helper
+  resources, so total network isolation is not promised.
+- Job directories should be trusted and user-exclusive; this is not a multi-tenant sandbox against
+  malicious local users.
+- There is no automatic cleanup command. If disk space matters, verify final transcripts first and
+  request separate authorization before deleting retained media.
