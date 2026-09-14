@@ -13,7 +13,8 @@ import signal
 import subprocess
 import sys
 import tempfile
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
+from urllib.request import urlopen
 
 import media_transcribe as core
 
@@ -51,6 +52,35 @@ def title_filename(title):
     if len(title.encode('utf-8')) > 230:
         raise ValueError('Video title too long for a filename; supply --title')
     return title + '.mp3'
+
+
+def combined_title(video_title, uploader=None):
+    if not isinstance(video_title, str) or not video_title.strip():
+        raise ValueError('Missing video title/filename')
+    title = video_title.strip()
+    if not isinstance(uploader, str) or not uploader.strip():
+        return title
+    owner = uploader.strip()
+    norm_title = re.sub(r'\s+', ' ', title).casefold()
+    norm_owner = re.sub(r'\s+', ' ', owner).casefold()
+    if norm_title == norm_owner or norm_title.startswith(f'[{norm_owner}] '):
+        return title
+    return f'[{owner}] {title}'
+
+
+def youtube_metadata(url, timeout=30):
+    endpoint = 'https://www.youtube.com/oembed?url=' + quote(url, safe='') + '&format=json'
+    with urlopen(endpoint, timeout=timeout) as response:
+        data = json.load(response)
+    if not isinstance(data, dict):
+        raise ValueError('Unexpected YouTube metadata response')
+    title = data.get('title')
+    uploader = data.get('author_name')
+    if title is not None and not isinstance(title, str):
+        raise ValueError('Unexpected YouTube title metadata')
+    if uploader is not None and not isinstance(uploader, str):
+        raise ValueError('Unexpected YouTube uploader metadata')
+    return {'title': title, 'uploader': uploader}
 
 
 def load_settings(path=None, overrides=None):
@@ -112,10 +142,20 @@ def pipeline_lock(job):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def run_pipeline(url, job, settings, download_only=False, title=None, downloader=None, infer=None):
+def run_pipeline(url, job, settings, download_only=False, title=None, downloader=None, infer=None,
+                 metadata_fetcher=None):
     video_id = youtube_id(url)
     downloader = downloader or worker_download
     infer = infer or run_asr
+    metadata_fetcher = metadata_fetcher or youtube_metadata
+    metadata = {}
+    if not title:
+        try:
+            metadata = metadata_fetcher(url) or {}
+            if not isinstance(metadata, dict):
+                raise ValueError('Unexpected YouTube metadata payload')
+        except Exception:
+            metadata = {}
     job = Path(job).expanduser().resolve()
     if not job.exists():
         core.create_job(job, core.make_entries([(video_id, video_id + '.mp3')]), 'youtube:' + url)
@@ -155,8 +195,9 @@ def run_pipeline(url, job, settings, download_only=False, title=None, downloader
                             suggested = meta.get('suggested_filename', '')
                             if Path(suggested).suffix.lower() != '.mp3' or meta.get('provider') != site:
                                 raise ValueError('Converter returned unexpected filename or provider')
-                            original_title = title or meta.get('title') or Path(suggested).stem
-                            filename = title_filename(original_title)
+                            video_title = title or metadata.get('title') or meta.get('title') or Path(suggested).stem
+                            uploader = None if title else metadata.get('uploader')
+                            filename = title_filename(combined_title(video_title, uploader))
                             if entry.get('media_sha256'):
                                 filename = entry['name']
                             target = core.job_path(job, 'media', filename)
@@ -164,9 +205,10 @@ def run_pipeline(url, job, settings, download_only=False, title=None, downloader
                             if target.exists():
                                 raise ValueError('Refusing to replace an untracked media file')
                             os.replace(partial, target)
-                            entry.update(name=filename, original_title=original_title,
-                                         suggested_filename=suggested, provider=site, download='done',
-                                         media_sha256=digest, duration_seconds=duration)
+                            entry.update(name=filename, original_title=video_title,
+                                         uploader=uploader, suggested_filename=suggested,
+                                         provider=site, download='done', media_sha256=digest,
+                                         duration_seconds=duration)
                             entry.pop('download_error', None)
                             attempts.append({'provider': site, 'status': 'downloaded'})
                             ready = True

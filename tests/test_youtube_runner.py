@@ -33,6 +33,8 @@ class ConfigurationTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 w.youtube_id(url)
         self.assertEqual(w.title_filename('English / Talk: Lesson 1'), 'English _ Talk_ Lesson 1.mp3')
+        self.assertEqual(w.combined_title('Lesson 1', 'Teacher A'), '[Teacher A] Lesson 1')
+        self.assertEqual(w.combined_title('[Teacher A] Lesson 1', 'Teacher A'), '[Teacher A] Lesson 1')
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / 'config.json'
             config.write_text(json.dumps({'asr_python': sys.executable, 'model_path': None, 'threads': 2}))
@@ -67,20 +69,25 @@ class PipelineTests(unittest.TestCase):
             backend.recognize.side_effect = recognize
             config = {k: settings[k] for k in ('model_path', 'vad_path', 'punc_path', 'chunk_seconds', 'threads')}
             return w.core.transcribe_job(job, config, lambda _: backend)
+        def metadata(url):
+            return {'title': 'sample / video', 'uploader': 'channel / name'}
         with tempfile.TemporaryDirectory() as tmp:
             settings = w.load_settings(Path(tmp) / 'absent.json')
             job = Path(tmp) / 'job'
             url = 'https://youtu.be/jNQXAC9IVRw'
-            result = w.run_pipeline(url, job, settings, downloader=downloader, infer=infer)
+            result = w.run_pipeline(url, job, settings, downloader=downloader, infer=infer,
+                                    metadata_fetcher=metadata)
             self.assertTrue(result['complete'])
             self.assertEqual(calls, ['tuberipper', 'onlymp3'])
-            self.assertEqual((job / 'txt' / 'sample _ video.txt').read_text(), 'sample transcript\n')
-            result = w.run_pipeline(url, job, settings, downloader=downloader, infer=infer)
+            self.assertEqual((job / 'txt' / '[channel _ name] sample _ video.txt').read_text(), 'sample transcript\n')
+            result = w.run_pipeline(url, job, settings, downloader=downloader, infer=infer,
+                                    metadata_fetcher=metadata)
             self.assertTrue(result['complete'])
             self.assertEqual(len(recognized), 1)
             self.assertEqual(len(calls), 2)
             with self.assertRaises(ValueError):
-                w.run_pipeline('https://youtu.be/BaW_jenozKc', job, settings, downloader=downloader, infer=infer)
+                w.run_pipeline('https://youtu.be/BaW_jenozKc', job, settings, downloader=downloader, infer=infer,
+                               metadata_fetcher=metadata)
 
     def test_download_only_never_invokes_inference_and_does_not_claim_complete(self):
         w = load()
@@ -89,10 +96,12 @@ class PipelineTests(unittest.TestCase):
             self.audio(output)
             return {'title': 'audio-check', 'suggested_filename': 'audio.mp3', 'provider': site}
         infer = Mock(side_effect=AssertionError('Must not transcribe'))
+        metadata = Mock(return_value={'title': 'audio-check', 'uploader': 'fixture channel'})
         with tempfile.TemporaryDirectory() as tmp:
             settings = w.load_settings(Path(tmp) / 'absent')
             result = w.run_pipeline('https://youtu.be/jNQXAC9IVRw', Path(tmp) / 'job', settings,
-                                    download_only=True, downloader=downloader, infer=infer)
+                                    download_only=True, downloader=downloader, infer=infer,
+                                    metadata_fetcher=metadata)
             self.assertFalse(result['complete'])
             self.assertEqual(result['verified_media'], 1)
             infer.assert_not_called()
@@ -104,11 +113,13 @@ class PipelineTests(unittest.TestCase):
             output.write_text('<html>payment required</html>')
             return {'title': 'bad', 'suggested_filename': 'bad.mp3', 'provider': site}
         infer = Mock()
+        metadata = Mock(return_value={'title': 'bad', 'uploader': 'fixture channel'})
         with tempfile.TemporaryDirectory() as tmp:
             settings = w.load_settings(Path(tmp) / 'absent')
             job = Path(tmp) / 'job'
             with self.assertRaises(RuntimeError):
-                w.run_pipeline('https://youtu.be/jNQXAC9IVRw', job, settings, downloader=downloader, infer=infer)
+                w.run_pipeline('https://youtu.be/jNQXAC9IVRw', job, settings, downloader=downloader, infer=infer,
+                               metadata_fetcher=metadata)
             infer.assert_not_called()
             self.assertEqual(w.core.read_job(job)['entries'][0]['download'], 'error')
 

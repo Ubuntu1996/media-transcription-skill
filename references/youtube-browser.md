@@ -67,12 +67,13 @@ or explicit audio download are fine, but do not claim the full end-to-end pipeli
 
 Default job directory: `~/transcription_jobs/youtube-VIDEO_ID/`.
 
-- The manifest stores the exact source, video ID, original title, actual filename, provider
-  attempts, and SHA-256 hashes.
+- The manifest stores the exact source, video ID, original title, uploader when available,
+  actual filename, provider attempts, and SHA-256 hashes.
 - `media/` holds the verified MP3, `raw/` the raw recognition, and `txt/` the final transcript.
-- Filenames come from the video title rather than provider branding suffixes. Filesystem-hostile
-  characters are replaced with underscores, while the original title stays in the manifest.
-  Overlong titles require an explicit `--title`; they are not silently truncated.
+- Filenames come from YouTube metadata when available in the form `[uploader] video title`,
+  rather than provider branding suffixes. Filesystem-hostile characters are replaced with
+  underscores, while the original title stays in the manifest. Overlong titles require an
+  explicit `--title`; they are not silently truncated.
 - Completed audio is not reconverted; verified finished transcripts are skipped by the core.
   Manual edits are not overwritten.
 - Different YouTube share URL forms are allowed, but they must resolve to the same valid video ID;
