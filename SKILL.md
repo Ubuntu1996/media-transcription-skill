@@ -3,7 +3,7 @@ name: media-transcription
 description: Use when transcribing Drive or YouTube media to TXT.
 version: 0.2.0
 author: Project Maintainer, Hermes Agent
-license: Proprietary
+license: MIT
 platforms: [linux]
 metadata:
   hermes:

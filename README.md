@@ -22,6 +22,7 @@ The existing public Drive and local media batch workflows are also preserved.
 
 ```text
 SKILL.md                         Hermes skill entrypoint
+LICENSE                          MIT license
 scripts/youtube_transcribe.py    Automatic entrypoint from one YouTube URL to local TXT
 scripts/youtube_browser.py       Playwright browser download worker subprocess
 scripts/media_transcribe.py      Drive / local media / transcription core
@@ -171,10 +172,11 @@ This project is currently built locally only. It does not modify Hermes configur
 existing `media-transcription` skill automatically. Hermes can load this project's `SKILL.md` and
 then run the workflow.
 
-For a formal install, place `SKILL.md`, `scripts/`, `references/`, `requirements*.txt`, and
-`config.example.json` together under the current profile at `skills/media-transcription/`, then
-load a new session. Do not copy only `SKILL.md` and forget the scripts. In multi-profile setups,
-use the actual `HERMES_HOME` and do not install into the wrong profile.
+For a formal install, place `SKILL.md`, `LICENSE`, `scripts/`, `references/`,
+`requirements*.txt`, and `config.example.json` together under the current profile at
+`skills/media-transcription/`, then load a new session. Do not copy only `SKILL.md` and forget the
+scripts. In multi-profile setups, use the actual `HERMES_HOME` and do not install into the wrong
+profile.
 
 Official docs:
 https://hermes-agent.nousresearch.com/docs/user-guide/features/skills/
@@ -195,5 +197,10 @@ actual tested scope and remaining gaps.
 - The project does not store real Drive links, user transcripts, or credentials by default.
 - `.gitignore` excludes jobs, media, models, virtual environments, cookies, and key files by
   default. Still inspect the file list manually before publishing.
-- No open-source license has been chosen yet; treat the project as private until licensing is
-  decided.
+
+## License
+
+This project's original code and documentation are licensed under the [MIT License](LICENSE).
+
+Third-party dependencies and model weights retain their respective licenses. This license does not
+grant rights to third-party media or other content processed by the tools.
