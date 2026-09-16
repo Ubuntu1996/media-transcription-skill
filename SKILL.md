@@ -63,6 +63,9 @@ user. Do not silently replace it with captions or yt-dlp. Read
    TubeRipper then OnlyMP3 in clean Playwright browser contexts, downloads MP3,
    verifies it, closes the browser, invokes the configured local FunASR Python,
    and reports hash-verified final TXT paths. URLs retain the supplied video ID.
+   Audio and TXT filenames use `[uploader] [YYYY-MM-DD] video title`, with the video's
+   publication date when available. Missing metadata fields are omitted, never guessed;
+   existing jobs keep their recorded filenames on resume.
 6. `--download-only` is an explicit partial-work mode, not complete transcription.
    Inspect `manifest.json` and `asr.log` for errors; never claim TXT completion
    when `complete` is false. Rerun the same URL to resume after fixing a blocker.

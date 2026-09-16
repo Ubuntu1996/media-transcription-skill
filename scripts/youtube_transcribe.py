@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+from datetime import datetime
 import fcntl
+from html.parser import HTMLParser
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -54,33 +57,97 @@ def title_filename(title):
     return title + '.mp3'
 
 
-def combined_title(video_title, uploader=None):
+def normalize_publish_date(value):
+    """Keep the source's calendar date; do not invent a time or shift its timezone."""
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.strip()).date().isoformat()
+        except ValueError:
+            pass
+    return None
+
+
+def combined_title(video_title, uploader=None, publish_date=None):
     if not isinstance(video_title, str) or not video_title.strip():
         raise ValueError('Missing video title/filename')
     title = video_title.strip()
-    if not isinstance(uploader, str) or not uploader.strip():
-        return title
-    owner = uploader.strip()
-    norm_title = re.sub(r'\s+', ' ', title).casefold()
-    norm_owner = re.sub(r'\s+', ' ', owner).casefold()
-    if norm_title == norm_owner or norm_title.startswith(f'[{norm_owner}] '):
-        return title
-    return f'[{owner}] {title}'
+    prefix = ''
+    if isinstance(uploader, str) and uploader.strip():
+        owner = uploader.strip()
+        norm_title = re.sub(r'\s+', ' ', title).casefold()
+        norm_owner = re.sub(r'\s+', ' ', owner).casefold()
+        if norm_title != norm_owner:
+            prefix = f'[{owner}] '
+            # Keep an existing uploader prefix intact and put the date after it.
+            for match in re.finditer(r'\]\s+', title):
+                if re.sub(r'\s+', ' ', title[:match.start() + 1]).casefold() == f'[{norm_owner}]':
+                    prefix, title = title[:match.end()], title[match.end():]
+                    break
+    published = normalize_publish_date(publish_date)
+    if published:
+        date_prefix = f'[{published}]'
+        if title != date_prefix and not title.startswith(date_prefix + ' '):
+            title = f'{date_prefix} {title}'
+    return prefix + title
+
+
+class PublishDateParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.publish_date = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'meta':
+            attrs = dict(attrs)
+            if 'datePublished' in (attrs.get('itemprop') or '').split():
+                self.publish_date = self.publish_date or normalize_publish_date(attrs.get('content'))
+
+
+def watch_publish_date(html):
+    parser = PublishDateParser()
+    parser.feed(html)
+    parser.close()
+    if parser.publish_date:
+        return parser.publish_date
+    # Some watch pages expose the date only in the embedded player microformat.
+    match = re.search(r'"playerMicroformatRenderer"\s*:\s*', html)
+    if match:
+        try:
+            data, _ = json.JSONDecoder().raw_decode(html[match.end():])
+        except ValueError:
+            return None
+        if isinstance(data, dict):
+            return normalize_publish_date(data.get('publishDate'))
+    return None
 
 
 def youtube_metadata(url, timeout=30):
+    video_id = youtube_id(url)
+    metadata = {'title': None, 'uploader': None, 'publish_date': None}
     endpoint = 'https://www.youtube.com/oembed?url=' + quote(url, safe='') + '&format=json'
-    with urlopen(endpoint, timeout=timeout) as response:
-        data = json.load(response)
-    if not isinstance(data, dict):
-        raise ValueError('Unexpected YouTube metadata response')
-    title = data.get('title')
-    uploader = data.get('author_name')
-    if title is not None and not isinstance(title, str):
-        raise ValueError('Unexpected YouTube title metadata')
-    if uploader is not None and not isinstance(uploader, str):
-        raise ValueError('Unexpected YouTube uploader metadata')
-    return {'title': title, 'uploader': uploader}
+    try:
+        with urlopen(endpoint, timeout=timeout) as response:
+            data = json.load(response)
+        if not isinstance(data, dict):
+            raise ValueError('Unexpected YouTube metadata response')
+        title = data.get('title')
+        uploader = data.get('author_name')
+        if title is not None and not isinstance(title, str):
+            raise ValueError('Unexpected YouTube title metadata')
+        if uploader is not None and not isinstance(uploader, str):
+            raise ValueError('Unexpected YouTube uploader metadata')
+        metadata.update(title=title, uploader=uploader)
+    except (OSError, ValueError, HTTPException):
+        pass
+    # oEmbed has no publication date. These optional lookups fail independently,
+    # so a blocked watch page does not discard a usable title or uploader.
+    try:
+        with urlopen(f'https://www.youtube.com/watch?v={video_id}', timeout=timeout) as response:
+            html = response.read(5 * 1024 * 1024).decode('utf-8', errors='replace')
+        metadata['publish_date'] = watch_publish_date(html)
+    except (OSError, ValueError, HTTPException):
+        pass
+    return metadata
 
 
 def load_settings(path=None, overrides=None):
@@ -197,7 +264,8 @@ def run_pipeline(url, job, settings, download_only=False, title=None, downloader
                                 raise ValueError('Converter returned unexpected filename or provider')
                             video_title = title or metadata.get('title') or meta.get('title') or Path(suggested).stem
                             uploader = None if title else metadata.get('uploader')
-                            filename = title_filename(combined_title(video_title, uploader))
+                            publish_date = None if title else normalize_publish_date(metadata.get('publish_date'))
+                            filename = title_filename(combined_title(video_title, uploader, publish_date))
                             if entry.get('media_sha256'):
                                 filename = entry['name']
                             target = core.job_path(job, 'media', filename)
@@ -206,7 +274,8 @@ def run_pipeline(url, job, settings, download_only=False, title=None, downloader
                                 raise ValueError('Refusing to replace an untracked media file')
                             os.replace(partial, target)
                             entry.update(name=filename, original_title=video_title,
-                                         uploader=uploader, suggested_filename=suggested,
+                                         uploader=uploader, publish_date=publish_date,
+                                         suggested_filename=suggested,
                                          provider=site, download='done', media_sha256=digest,
                                          duration_seconds=duration)
                             entry.pop('download_error', None)
@@ -309,7 +378,7 @@ def main(argv=None):
     parser.add_argument('--config', default=None, help='Local JSON config; default config.local.json')
     parser.add_argument('--configure', action='store_true', help='Validate and save one-time local settings')
     parser.add_argument('--job', help='Default: configured jobs_root/youtube-VIDEO_ID; reused on rerun')
-    parser.add_argument('--title', help='Override filename title; original title normally comes from converter')
+    parser.add_argument('--title', help='Override full filename title; no automatic uploader or publication date')
     parser.add_argument('--site', choices=['auto', 'tuberipper', 'onlymp3'])
     parser.add_argument('--download-only', action='store_true', help='Save verified MP3 without invoking ASR')
     for name in ('asr-python', 'model-path', 'vad-path', 'punc-path', 'jobs-root'):

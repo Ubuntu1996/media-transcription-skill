@@ -1,5 +1,19 @@
 # Local validation record
 
+## Publication-date filename update
+
+- `python3 -m unittest discover -s tests -p 'test_youtube_runner.py' -v`: 15 tests passed.
+- `python3 -m unittest discover -s tests -p 'test_workflow.py' -v`: 12 tests passed.
+- `python3 -m compileall -q scripts tests` and the YouTube CLI `--help` passed.
+- Tests cover date parsing/validation, independent metadata lookup failures, matching dated
+  MP3/raw/TXT names, manifest dates, legacy job resume, and explicit title overrides.
+- Publication metadata responses in the automated tests are explicit fixtures. A public
+  metadata-only check for `jNQXAC9IVRw` returned oEmbed title/uploader, but its watch page presented
+  a sign-in/bot-verification gate without publication metadata. No gate was bypassed; successful
+  live publication-date extraction remains unverified in this environment.
+- Playwright is not installed in the current Python environment, so browser tests were not rerun.
+  No live converter download or model inference was performed for this update.
+
 ## v0.2 YouTube: real browser download validation
 
 - Installed Playwright 1.62.0 with its Chromium bundle and used a real headless browser.
